@@ -1,4 +1,4 @@
-# Bãi Gửi Xe Thành Đạt - Ứng Dụng Quản Lý Thuê Chỗ Đậu Xe
+# Ứng Dụng Quản Lý Thuê Chỗ Đậu Xe
 
 Ứng dụng quản lý thuê chỗ đậu xe địa phương với cơ sở dữ liệu SQLite, không cần kết nối internet hay dịch vụ trả phí.
 
