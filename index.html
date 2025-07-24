@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Language" content="vi-VN">
+    <title>BÃI GỬI XE THÀNH ĐẠT</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script>
+        // Ensure Vietnamese locale for date inputs
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set the document language to Vietnamese
+            document.documentElement.lang = 'vi';
+            
+            // Configure date inputs for Vietnamese locale
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            dateInputs.forEach(input => {
+                input.setAttribute('lang', 'vi-VN');
+                input.setAttribute('data-locale', 'vi-VN');
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>BÃI GỬI XE THÀNH ĐẠT</h1>
+            <button id="addNewBtn" class="add-btn">Thêm Hợp Đồng Mới</button>
+        </header>
+
+        <div class="table-controls">
+            <div class="search-container">
+                                    <input type="text" id="searchInput" placeholder="Tìm kiếm theo tên, biển số, địa chỉ, số điện thoại, loại xe, ghi chú... (hỗ trợ tiếng Việt có dấu)">
+                <button id="clearSearch" class="clear-btn">Xóa</button>
+
+            </div>
+            <div class="filter-container">
+                <select id="statusFilter">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="paid">Đã thanh toán</option>
+                    <option value="unpaid">Chưa thanh toán</option>
+                </select>
+                <select id="reminderFilter">
+                    <option value="">Tất cả nhắc nhở</option>
+                    <option value="overdue">Quá hạn</option>
+                    <option value="today">Hôm nay</option>
+                    <option value="upcoming">Sắp tới</option>
+                </select>
+                <div class="database-controls">
+                    <button id="columnVisibilityBtn" class="column-btn">Hiển Thị Cột</button>
+                    <button id="reportBtn" class="report-btn">Báo Cáo Tài Chính</button>
+                    <button id="recalculateBtn" class="db-btn">Tính Lại Số Tiền Nợ</button>
+                    <button id="exportDbBtn" class="db-btn">Xuất Database</button>
+                    <input type="file" id="importDbFile" accept=".sqlite,.db" style="display: none;">
+                    <button id="importDbBtn" class="db-btn">Nhập Database</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-sort="id">ID <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="owner">Chủ Xe <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="driverAddress">Địa Chỉ <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="phoneNumber">Số Điện Thoại <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="carModel">Loại Xe <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="plateNumber">Biển Số <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="parkingArea">Khu Vực <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="dateIn">Ngày Vào <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="dateOut">Ngày Ra <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="nextReminder">Ngày Nhắc Nhở <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="price">Giá Thuê (VNĐ) <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="monthsPaid">Tháng Đã Trả <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="monthsPaidDetails">Chi Tiết Thanh Toán <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="amountOwed">Số Tiền Nợ (VNĐ) <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="paid">Trạng Thái <span class="sort-arrow"></span></th>
+
+                        <th class="sortable" data-sort="notes">Ghi Chú <span class="sort-arrow"></span></th>
+                        <th>Thao Tác</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody">
+                    <!-- Data will be populated here -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Modal for adding/editing data -->
+        <div id="modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="modalTitle">Thêm Hợp Đồng Mới</h2>
+                <form id="rentalForm">
+                    <div class="form-grid">
+                        <div class="form-column">
+                            <div class="form-group">
+                                <label for="owner">Chủ Xe:</label>
+                                <input type="text" id="owner" name="owner" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="driverAddress">Địa Chỉ:</label>
+                                <input type="text" id="driverAddress" name="driverAddress" placeholder="vd: 123 Nguyễn Huệ, Quận 1, TP.HCM">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="phoneNumber">Số Điện Thoại:</label>
+                                <input type="tel" id="phoneNumber" name="phoneNumber" placeholder="vd: 0901234567 hoặc +84901234567" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="carModel">Loại Xe:</label>
+                                <input type="text" id="carModel" name="carModel" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="plateNumber">Biển Số Xe:</label>
+                                <input type="text" id="plateNumber" name="plateNumber" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="parkingArea">Khu Vực Đỗ Xe:</label>
+                                <select id="parkingArea" name="parkingArea" required>
+                                    <option value="">Chọn khu vực</option>
+                                    <option value="1">Khu vực 1</option>
+                                    <option value="2">Khu vực 2</option>
+                                    <option value="3">Khu vực 3</option>
+                                    <option value="4">Khu vực 4</option>
+                                    <option value="5">Khu vực 5</option>
+                                    <option value="6">Khu vực 6</option>
+                                    <option value="7">Khu vực 7</option>
+                                    <option value="8">Khu vực 8</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-column">
+                            <div class="form-group">
+                                <label for="dateIn">Ngày Vào:</label>
+                                <input type="text" id="dateIn" name="dateIn" class="vietnamese-date-input" placeholder="dd/mm/yyyy" required>
+                                <div class="date-picker-container" id="dateInPicker" style="display: none;">
+                                    <div class="date-picker-header">
+                                        <button type="button" class="date-nav-btn" data-action="prev">&lt;</button>
+                                        <span class="date-picker-title"></span>
+                                        <button type="button" class="date-nav-btn" data-action="next">&gt;</button>
+                                    </div>
+                                    <div class="date-picker-weekdays">
+                                        <div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div><div>CN</div>
+                                    </div>
+                                    <div class="date-picker-days"></div>
+                                    <div class="date-picker-footer">
+                                        <button type="button" class="date-picker-btn" data-action="clear">Xóa</button>
+                                        <button type="button" class="date-picker-btn" data-action="today">Hôm Nay</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="checkbox-group" style="margin-bottom: 10px;">
+                                    <input type="checkbox" id="openEndedRental" name="openEndedRental">
+                                    <label for="openEndedRental">🔄 Thuê không thời hạn (thanh toán hàng tháng)</label>
+                                </div>
+                                <label for="dateOut">Ngày Ra:</label>
+                                <input type="text" id="dateOut" name="dateOut" class="vietnamese-date-input" placeholder="dd/mm/yyyy">
+                                <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                                    Để trống nếu khách thuê không thời hạn
+                                </small>
+                                <div class="date-picker-container" id="dateOutPicker" style="display: none;">
+                                    <div class="date-picker-header">
+                                        <button type="button" class="date-nav-btn" data-action="prev">&lt;</button>
+                                        <span class="date-picker-title"></span>
+                                        <button type="button" class="date-nav-btn" data-action="next">&gt;</button>
+                                    </div>
+                                    <div class="date-picker-weekdays">
+                                        <div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div><div>CN</div>
+                                    </div>
+                                    <div class="date-picker-days"></div>
+                                    <div class="date-picker-footer">
+                                        <button type="button" class="date-picker-btn" data-action="clear">Xóa</button>
+                                        <button type="button" class="date-picker-btn" data-action="today">Hôm Nay</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="price">Giá Thuê Tháng (VNĐ):</label>
+                                <input type="text" id="price" name="price" placeholder="vd: 3000000" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group form-full-width">
+                        <label for="notes">Ghi Chú:</label>
+                        <textarea id="notes" name="notes" rows="3" placeholder="Ghi chú thêm về khách hàng (tùy chọn)"></textarea>
+                        <small style="color: #666; font-size: 12px;">Thông tin bổ sung về khách hàng hoặc hợp đồng (tùy chọn)</small>
+                    </div>
+                    
+                    <div class="form-group form-full-width">
+                        <label for="amountOwed">Số Tiền Còn Nợ (VNĐ):</label>
+                        <input type="number" id="amountOwed" name="amountOwed" min="0" step="1000" value="0" required>
+                        <small style="color: #666; font-size: 12px;">Tự động tính toán dựa trên thời gian thuê, giá thuê và số tháng đã thanh toán</small>
+                    </div>
+                    
+                    <div class="form-buttons">
+                        <button type="button" id="cancelBtn" class="cancel-btn">Hủy</button>
+                        <button type="submit" class="submit-btn">Lưu</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Financial Report Modal -->
+        <div id="reportModal" class="modal">
+            <div class="modal-content report-modal-content">
+                <span class="close" id="reportCloseBtn">&times;</span>
+                <h2 id="reportTitle">📊 Báo Cáo Tài Chính</h2>
+                <div id="reportContent" class="report-content">
+                    <!-- Report content will be populated here -->
+                </div>
+                <div class="report-buttons">
+                    <button id="printReportBtn" class="print-btn">🖨️ In Báo Cáo</button>
+                    <button id="exportReportBtn" class="export-btn">📤 Xuất Excel</button>
+                    <button id="closeReportBtn" class="close-report-btn">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invoice Modal -->
+        <div id="invoiceModal" class="modal">
+            <div class="modal-content invoice-modal-content">
+                <span class="close" id="invoiceCloseBtn">&times;</span>
+                <div id="reprintBanner" class="reprint-banner" style="display: none;">
+                    <div class="reprint-message">
+                        <span class="reprint-icon">🔁</span>
+                        <span class="reprint-text">IN LẠI PHIẾU THU</span>
+                        <span class="reprint-subtitle">Bạn có thể chỉnh sửa thông tin trước khi in</span>
+                    </div>
+                </div>
+                <div class="invoice-container" id="invoiceContainer">
+                    <div class="invoice-header">
+                        <div class="company-info">
+                            <h2>BÃI GỬI XE THÀNH ĐẠT</h2>
+                            <p>ĐC: 125/53A Âu Dương Lân, P.Chánh Hưng, TP. HCM</p>
+                            <p>ĐT: 0909396424 - 0902336989</p>
+                        </div>
+                        <div class="invoice-title">
+                            <h1>PHIẾU THU GỬI XE Ô TÔ</h1>
+                            <p class="subtitle">(Kiêm phiếu thanh toán)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="invoice-content">
+                        <div class="invoice-row">
+                            <span class="label">Họ & tên Ông/Bà:</span>
+                            <span class="value" id="invoiceCustomerName">NGÔ HOÀNG VIỆT</span>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Số xe:</span>
+                            <span class="value" id="invoicePlateNumber">51G-762.55</span>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Hiệu xe:</span>
+                            <span class="value" id="invoiceCarModel">LEXUS - MÀU BẠC (5 chỗ)</span>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Địa chỉ</span>
+                            <span class="value" id="invoiceAddress"></span>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Số tiền đã trả:</span>
+                            <span class="value amount" id="invoiceAmount">3,900,000</span>
+                        </div>
+                        <div class="amount-text">
+                            <p><em>(Bằng chữ)</em> <span id="invoiceAmountText">Ba triệu, chín trăm ngàn đồng chẵn</span></p>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Đã nộp tới tháng:</span>
+                            <span class="value" id="invoicePeriod">THÁNG 04+05+06/2025</span>
+                        </div>
+                        <div class="invoice-row">
+                            <span class="label">Thời gian thanh toán:</span>
+                            <span class="value" id="invoiceDatePeriods">TỪ NGÀY 01/04/2025 ĐẾN 30/06/2025</span>
+                        </div>
+                    </div>
+
+                    <div class="invoice-footer">
+                        <div class="signature-section">
+                            <div class="signature-row">
+                                <div class="payer-section">
+                                    <div class="signature-spacer"></div>
+                                    <p class="signature-title"><strong>NGƯỜI NỘP TIỀN</strong></p>
+                                    <p class="signature-note">(Ký và ghi rõ họ tên)</p>
+                                    <div class="signature-space"></div>
+                                </div>
+                                <div class="receiver-section">
+                                    <p class="signature-date" id="invoiceDate">Ngày 19 tháng 7 năm 2025</p>
+                                    <p class="signature-title"><strong>NGƯỜI NHẬN</strong></p>
+                                    <p class="signature-note">(Ký và ghi rõ họ tên)</p>
+                                    <div class="signature-space"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="invoice-notes">
+                        <p><strong>Lưu ý:</strong></p>
+                        <p>◆ Kiểm tra vật dụng để trong xe lúc giao nhận xe. Bãi gửi xe Không chịu trách nhiệm cho các vật tư ở trên xe</p>
+                        <p>◆ Chủ xe phải thông báo trước cho bãi xe trong trường hợp có bên thứ ba đến nhận xe</p>
+                        <p>◆ Chủ xe phải thông báo trước cho bãi xe về tình trạng hư hỏng, mất mát về bên ngoài xe trước khi giao xe</p>
+                        <p>◆ Bãi xe sẽ không chịu trách nhiệm nếu những lưu ý trên không được thực hiện đúng</p>
+                        <p>◆ Số tiền đã thanh toán sẽ không thể hoàn trả</p>
+                    </div>
+                </div>
+                
+
+                
+                <div class="invoice-controls">
+                    <button id="printInvoiceBtn" class="print-btn">🖨️ In Phiếu Thu</button>
+                    <button id="closeInvoiceBtn" class="close-report-btn">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column Visibility Modal -->
+        <div id="columnVisibilityModal" class="modal">
+            <div class="modal-content column-visibility-content">
+                <span class="close" id="columnVisibilityCloseBtn">&times;</span>
+                <h2>🔧 Hiển Thị/Ẩn Cột</h2>
+                <p>Chọn những cột bạn muốn hiển thị trong bảng:</p>
+                <div class="column-checkboxes">
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-id" checked data-column="1">
+                        <label for="col-id">ID</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-owner" checked data-column="2">
+                        <label for="col-owner">Chủ Xe</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-address" checked data-column="3">
+                        <label for="col-address">Địa Chỉ</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-phone" checked data-column="4">
+                        <label for="col-phone">Số Điện Thoại</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-carmodel" checked data-column="5">
+                        <label for="col-carmodel">Loại Xe</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-platenumber" checked data-column="6">
+                        <label for="col-platenumber">Biển Số</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-parkingarea" checked data-column="7">
+                        <label for="col-parkingarea">Khu Vực</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-datein" checked data-column="8">
+                        <label for="col-datein">Ngày Vào</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-dateout" checked data-column="9">
+                        <label for="col-dateout">Ngày Ra</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-reminder" checked data-column="10">
+                        <label for="col-reminder">Ngày Nhắc Nhở</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-price" checked data-column="11">
+                        <label for="col-price">Giá Thuê (VNĐ)</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-monthspaid" checked data-column="12">
+                        <label for="col-monthspaid">Tháng Đã Trả</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-paymentdetails" checked data-column="13">
+                        <label for="col-paymentdetails">Chi Tiết Thanh Toán</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-amountowed" checked data-column="14">
+                        <label for="col-amountowed">Số Tiền Nợ (VNĐ)</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-status" checked data-column="15">
+                        <label for="col-status">Trạng Thái</label>
+                    </div>
+
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-notes" checked data-column="16">
+                        <label for="col-notes">Ghi Chú</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="col-actions" checked data-column="17">
+                        <label for="col-actions">Thao Tác</label>
+                    </div>
+                </div>
+                <div class="column-controls">
+                    <button id="showAllColumns" class="control-btn">Hiện Tất Cả</button>
+                    <button id="hideAllColumns" class="control-btn">Ẩn Tất Cả</button>
+                    <button id="resetToDefault" class="control-btn">Mặc Định</button>
+                </div>
+                <div class="column-buttons">
+                    <button id="applyColumnChanges" class="submit-btn">Áp Dụng</button>
+                    <button id="cancelColumnChanges" class="cancel-btn">Hủy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment History Modal -->
+        <div id="paymentHistoryModal" class="modal">
+            <div class="modal-content payment-history-content">
+                <span class="close" id="paymentHistoryCloseBtn">&times;</span>
+                <h2 id="paymentHistoryTitle">📋 Lịch Sử Thanh Toán</h2>
+                <div class="customer-info">
+                    <div class="customer-grid">
+                        <div class="customer-item">
+                            <span class="label">Khách hàng:</span>
+                            <span class="value" id="historyCustomerName"></span>
+                        </div>
+                        <div class="customer-item">
+                            <span class="label">Biển số:</span>
+                            <span class="value" id="historyPlateNumber"></span>
+                        </div>
+                        <div class="customer-item">
+                            <span class="label">Loại xe:</span>
+                            <span class="value" id="historyCarModel"></span>
+                        </div>
+                        <div class="customer-item">
+                            <span class="label">Giá thuê/tháng:</span>
+                            <span class="value" id="historyMonthlyRate"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="payment-history-section">
+                    <div class="section-header">
+                        <h3>Các Lần Thanh Toán</h3>
+                        <button id="addPaymentBtn" class="add-payment-btn">+ Thêm Thanh Toán</button>
+                    </div>
+                    <div id="paymentHistoryList" class="payment-list">
+                        <!-- Payment history will be populated here -->
+                    </div>
+                </div>
+
+                <div class="payment-controls">
+                    <button id="printPaymentHistoryBtn" class="print-btn">🖨️ In Lịch Sử</button>
+                    <button id="closePaymentHistoryBtn" class="close-report-btn">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Payment Modal -->
+        <div id="addPaymentModal" class="modal">
+            <div class="modal-content add-payment-content">
+                <span class="close" id="addPaymentCloseBtn">&times;</span>
+                <h2>💰 Thêm Thanh Toán Mới</h2>
+                
+                <!-- Customer Info Section -->
+                <div class="customer-info-section">
+                    <h3>Thông Tin Khách Hàng</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Khách hàng:</span>
+                            <span class="value" id="addPaymentCustomerName"></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Biển số:</span>
+                            <span class="value" id="addPaymentPlateNumber"></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Loại xe:</span>
+                            <span class="value" id="addPaymentCarModel"></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Số tiền nợ hiện tại:</span>
+                            <span class="value amount-owed" id="addPaymentAmountOwed"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Calculation Section -->
+                <div class="payment-calculation-section">
+                    <h3>Tính Toán Thanh Toán</h3>
+                    <div class="calc-row">
+                        <label for="addPaymentRate">Giá thuê/tháng (VNĐ):</label>
+                                                        <input type="text" id="addPaymentRate" value="3000000">
+                    </div>
+                    <div class="calc-section">
+                        <label class="section-label">Chọn các tháng thanh toán:</label>
+                        <div id="addPaymentMonthSelection" class="month-grid">
+                            <!-- Month checkboxes will be populated here -->
+                        </div>
+                        <div class="selection-controls">
+                            <button type="button" id="addPaymentSelectAll" class="control-btn">Chọn Tất Cả</button>
+                            <button type="button" id="addPaymentClearAll" class="control-btn">Bỏ Chọn Tất Cả</button>
+                            <span class="selected-count">Đã chọn: <span id="addPaymentSelectedCount">0</span> tháng</span>
+                        </div>
+                    </div>
+                    <div class="calc-row">
+                        <label>Tổng tiền thanh toán:</label>
+                        <span id="addPaymentCalculatedTotal" class="total-display">0 VNĐ</span>
+                    </div>
+                </div>
+
+                <!-- Payment Details Section -->
+                <div class="payment-details-section">
+                    <h3>Chi Tiết Thanh Toán</h3>
+                    <div class="form-group">
+                        <label for="addPaymentDate">Ngày Thanh Toán:</label>
+                        <input type="text" id="addPaymentDate" name="addPaymentDate" class="vietnamese-date-input" placeholder="dd/mm/yyyy" required>
+                        <div class="date-picker-container" id="addPaymentDatePicker" style="display: none;">
+                            <div class="date-picker-header">
+                                <button type="button" class="date-nav-btn" data-action="prev">&lt;</button>
+                                <span class="date-picker-title"></span>
+                                <button type="button" class="date-nav-btn" data-action="next">&gt;</button>
+                            </div>
+                            <div class="date-picker-weekdays">
+                                <div>T2</div><div>T3</div><div>T4</div><div>T5</div><div>T6</div><div>T7</div><div>CN</div>
+                            </div>
+                            <div class="date-picker-days"></div>
+                            <div class="date-picker-footer">
+                                <button type="button" class="date-picker-btn" data-action="clear">Xóa</button>
+                                <button type="button" class="date-picker-btn" data-action="today">Hôm Nay</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="addPaymentMethod">Phương Thức:</label>
+                        <select id="addPaymentMethod" name="addPaymentMethod" required>
+                            <option value="Tiền mặt">Tiền mặt</option>
+                            <option value="Chuyển khoản">Chuyển khoản</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addPaymentNotes">Ghi Chú:</label>
+                        <textarea id="addPaymentNotes" name="addPaymentNotes" rows="2" 
+                                  placeholder="Ghi chú thêm về thanh toán (tùy chọn)"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="printInvoiceAfterPayment" name="printInvoiceAfterPayment" checked>
+                            <label for="printInvoiceAfterPayment">🖨️ In phiếu thu sau khi thêm thanh toán</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="add-payment-controls">
+                    <button type="button" id="cancelAddPaymentBtn" class="cancel-btn">Hủy</button>
+                    <button type="button" id="addPaymentSubmitBtn" class="submit-btn">Thêm Thanh Toán</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="create_sample_data.js"></script>
+</body>
+</html> 
